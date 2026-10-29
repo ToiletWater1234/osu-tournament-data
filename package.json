@@ -1,0 +1,16 @@
+{
+  "name": "osu-tournament-data",
+  "version": "1.0.0",
+  "description": "Editable post-match PowerPoint generation for osu! tournaments",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test tests/beatmap-mods.test.mjs tests/rsi-tournaments.test.mjs tests/generation-progress.test.mjs",
+    "check:dependencies": "node scripts/check-dependencies.mjs"
+  },
+  "dependencies": { "jszip": "^3.10.1", "sharp": "^0.35.5" },
+  "peerDependencies": { "@oai/artifact-tool": "2.8.103" },
+  "peerDependenciesMeta": { "@oai/artifact-tool": { "optional": true } }
+}

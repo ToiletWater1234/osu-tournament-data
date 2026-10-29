@@ -1,0 +1,22 @@
+# Private local configuration and credentials
+.local/
+.env
+.env.*
+!.env.example
+# Dependencies and packaged runtime
+node_modules/
+runtime/
+# Generated decks, previews, logs and installer output
+.tmp/
+outputs/
+dist/
+coverage/
+*.log
+*.pid
+*.inspect.ndjson
+# Editor and operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/

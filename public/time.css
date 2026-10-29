@@ -1,0 +1,11 @@
+input::placeholder { color: #777782; }
+[hidden] { display: none !important; }
+.time-block { display: grid; gap: 10px; color: var(--muted); font-size: 13px; }
+.time-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.time-grid label { min-width: 0; }
+.time-block output { color: var(--cream); }
+.auto-picks { display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
+.auto-picks output { min-height: 48px; padding: 13px 14px; border: 1px solid var(--line); background: var(--panel); color: var(--cream); }
+@media (max-width: 900px) { .time-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 700px) { .time-grid { grid-template-columns: repeat(2, 1fr); } }
+.mode{grid-template-columns:repeat(5,minmax(0,1fr))}#tournamentInfo{display:block;margin-top:12px;color:var(--cream)}@media(max-width:700px){.mode{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -1,0 +1,6 @@
+main{position:relative}
+.service-controls{position:absolute;top:48px;right:28px;display:grid;justify-items:end;gap:9px;z-index:2}
+.service-controls button{background:#55555f;color:#fff;font-size:16px;padding:13px 18px}
+.service-controls button:disabled{opacity:.55}
+.service-controls output{font-size:12px;color:var(--muted);max-width:220px;text-align:right}
+@media(max-width:700px){header{padding-top:92px}.service-controls{left:28px;right:auto;justify-items:start}.service-controls output{text-align:left}}
