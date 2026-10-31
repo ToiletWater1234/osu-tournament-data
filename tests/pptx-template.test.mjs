@@ -150,6 +150,9 @@ for(const mode of ['MWC4k','OWC'])test(mode+' generates a complete 6–7 match w
     const native=nodes(pick,'p:cNvPr').map(n=>n.getAttribute('name'));
     assert.ok(native.findIndex(n=>n.startsWith('!!MAP_BG_'))<native.indexOf('!!MAP_CODE_LABEL_'+start));
     const score=parse(await zip.file('ppt/slides/slide'+(start+1)+'.xml').async('string'));
+    if(mode==='OWC')for(const doc of [pick,score]){
+      for(const [team,fields] of [['RED',['redBan','redBan2']],['BLUE',['blueBan','blueBan2']]])fields.forEach((field,index)=>assert.equal(shapeText(findShape(doc,`!!BP_${team}_BAN_${index+1}`)),fixtureData.input[field]));
+    }
     const texts=nodes(score,'p:sp').map(shapeText).join('\n');
     assert.ok(texts.includes('TEST_blue_'+i+'_0'));assert.ok(texts.includes('TEST_red_'+i+'_0'));
     assert.ok(texts.includes(fmt(fixtureData.games[i].redTotal)));assert.ok(texts.includes(fmt(fixtureData.games[i].blueTotal)));
@@ -157,6 +160,15 @@ for(const mode of ['MWC4k','OWC'])test(mode+' generates a complete 6–7 match w
       const doc=parse(await zip.file('ppt/slides/slide'+(start+j)+'.xml').async('string'));
       assert.ok(!nodes(doc,'p:cNvPr').some(n=>/!!MAP_(?:BG|CODE_LABEL)_/.test(n.getAttribute('name'))));
       assert.ok(findShape(doc,'!!PROGRESS_CODE_'+String(i+1).padStart(2,'0')),'Late-slide progress remains complete');
+      if(mode==='OWC'){
+        const delta=findShape(doc,'!!CENTRAL_DELTA');assert.ok(delta,'Every score/detail/RSI page must have the winner delta');
+        assert.equal(shapeText(delta),'+'+fmt(Math.abs(fixtureData.games[i].redTotal-fixtureData.games[i].blueTotal)));
+        const frame=direct(direct(delta,'p:spPr'),'a:xfrm'),offset=direct(frame,'a:off'),extent=direct(frame,'a:ext');
+        const center=(Number(offset.getAttribute('x'))+Number(extent.getAttribute('cx'))/2)/9525;
+        const redWon=fixtureData.games[i].redTotal>fixtureData.games[i].blueTotal;
+        assert.equal(center<636.99,redWon,'Central delta must be above the winning team, independently of the picker');
+        assert.equal(direct(nodes(delta,'a:p')[0],'a:pPr').getAttribute('algn'),redWon?'l':'r');
+      }
     }
     const pickFilled=nodes(pick,'p:sp').filter(s=>/^!!SCORE_/.test(nodes(s,'p:cNvPr')[0]?.getAttribute('name'))&&nodes(s,'a:srgbClr').some(n=>n.getAttribute('val')==='FFE9A6')).length;
     assert.equal(pickFilled,i,'Pick never includes the current map point');
@@ -177,4 +189,29 @@ for(const mode of ['MWC4k','OWC'])test(mode+' generates a complete 6–7 match w
   const final=parse(await zip.file('ppt/slides/slide'+(result.slideCount-1)+'.xml').async('string'));
   assert.ok(nodes(final,'p:sp').map(shapeText).join('\n').includes('6 - 7'));
   assert.ok(nodes(final,'p:sp').map(shapeText).join('\n').includes('Test Blue Country'));
+});
+
+test('OWC BO9 renders exactly one ban per team and keeps the complete rail fixed and centered',async t=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'osu-bo9-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+  const fixtureData=fixture('OWC');fixtureData.games=fixtureData.games.slice(0,9);fixtureData.pool=fixtureData.games.map(g=>g.poolMap);
+  Object.assign(fixtureData.input,{bestOf:9,round:'Group Stage',redBan:'DT1',blueBan:'DT3',redBan2:'STALE_RED_BAN',blueBan2:'STALE_BLUE_BAN'});
+  const output=path.join(dir,'bo9.pptx');
+  const result=await generateDeck({templatePath:path.join(root,'assets/template-std.pptx'),outputPath:output,...fixtureData});
+  assert.equal(result.slideCount,67);assert.equal(result.redWins,4);assert.equal(result.blueWins,5);
+  const p=await openTemplate(output);let fixedRollLeft;
+  for(let no=3;no<=65;no++){
+    const {records}=await inspect(p,no);
+    const bans=records.filter(r=>/^!!BP_(RED|BLUE)_BAN_/.test(r.name));
+    assert.equal(bans.length,2,'Only two ban cells, including on late result/detail slides');
+    const red=bans.find(r=>r.name==='!!BP_RED_BAN_1'),blue=bans.find(r=>r.name==='!!BP_BLUE_BAN_1'),label=records.find(r=>r.name==='!!BP_BAN_LABEL');
+    assert.equal(red.text,'DT1');assert.equal(blue.text,'DT3');
+    assert.ok(Math.abs(label.position.width-96.36084)<.01,'Ban width matches the supplied BO9 sample');
+    assert.ok(Math.abs(red.position.left-label.position.left)<.01);
+    assert.ok(Math.abs(blue.position.left+blue.position.width-label.position.left-label.position.width)<.01);
+    assert.ok(!records.some(r=>/STALE_(RED|BLUE)_BAN/.test(r.text)),'Hidden second-ban inputs cannot leak into the PPT');
+    const roll=records.find(r=>r.text==='Roll');
+    fixedRollLeft??=roll.position.left;assert.ok(Math.abs(roll.position.left-fixedRollLeft)<.01,'Progress rail never moves between pages');
+    const codes=records.filter(r=>/^!!PROGRESS_CODE_/.test(r.name)).sort((a,b)=>a.position.left-b.position.left);
+    if(codes.length===9){const end=codes.at(-1).position;assert.ok(Math.abs((roll.position.left+end.left+end.width)/2-640)<.01,'Center uses the final rail extent');}
+  }
 });

@@ -7,7 +7,7 @@ import { normalizePool } from './lib/csv.mjs';
 import { fetchMatch, fetchMatchApi, fetchBeatmap, fetchModdedBeatmap, extractGames, selectPoolGames } from './lib/osu.mjs';
 import { runGenerationJob } from './lib/generation-job.mjs';
 import { OAuthStore } from './lib/oauth.mjs';
-import { normalizeTournamentInput, requireTournamentTemplate } from './public/tournaments.js';
+import { normalizeTournamentInput, requireTournamentTemplate, owcBanCount } from './public/tournaments.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 dns.setDefaultResultOrder('ipv4first');
@@ -141,7 +141,7 @@ const server = http.createServer(async (req, res) => {
       validatePool(pool);
       const poolCodes = new Set(pool.map(map => map.code));
       const std = input.modeLabel === 'osu!';
-      const twoStdBans = std && /(quarter|semi|final|grand|bracket reset)/i.test(String(input.round || ''));
+      const twoStdBans = std && owcBanCount(input) === 2;
       const bpFields = std
         ? [['redBan','红队 Ban 1'],['blueBan','蓝队 Ban 1'],...(twoStdBans?[['redBan2','红队 Ban 2'],['blueBan2','蓝队 Ban 2']]:[])]
         : [['redProtect','红队 Protect'],['blueProtect','蓝队 Protect'],['redBan','红队 Ban'],['blueBan','蓝队 Ban']];

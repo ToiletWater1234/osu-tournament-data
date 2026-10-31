@@ -127,7 +127,7 @@ TB,7654409,Example Artist - Tiebreaker [Extra]
 | --- | --- | --- |
 | `tournament_type` | 比赛类型 | `OWC`、`MWC4k`、`CWC`、`TWC`、`MWC7k`；推荐显式填写。目前只有 OWC、MWC4k 可生成。 |
 | `tournament_name` | PPT 比赛名称 | `osu! World Cup 2025`；这是显示名称，与比赛类型字段不同。 |
-| `round` | 比赛轮次 | `Round of 16`、`Quarterfinals`、`Semifinals`、`Finals`、`Grand Finals`。OWC 的 Ban 数量按此字段识别，请使用英文轮次。 |
+| `round` | 比赛轮次 | `Round of 16`、`Quarterfinals`、`Semifinals`、`Finals`、`Grand Finals`。OWC 在 BO9 及以下每队一张 Ban；更长赛制结合此字段识别 Ban 数量，请使用英文轮次。 |
 | `bracket` | 分组/赛段文字 | 如 `Winners Bracket`、`Losers Bracket`、`Losers Final`、`Grand Final`、`Bracket Reset`，也可填写其他文字。 |
 | `best_of` | Best of X | 只填数字 `7`、`9`、`11`、`13`、`15`，不要写成 `BO13`。 |
 | `match_time` | 星期、日期、时间、时区 | 如 `Sun 14 Dec @20:10(UTC+0)`；具体格式见下文。 |
@@ -137,7 +137,7 @@ TB,7654409,Example Artist - Tiebreaker [Extra]
 | `red_roll` / `blue_roll` | 两队 Roll | 填非负整数，或填写 `win` / `lose`；关键字不区分大小写。 |
 | `red_protect` / `blue_protect` | 两队 Protect | 仅 MWC4k 使用，例如 `RC7`、`LN1`。OWC 不使用 Protect。 |
 | `red_ban` / `blue_ban` | 两队第一张 Ban | 必须填图池中的编号，如 `RC8` 或 `HD1`。 |
-| `red_ban_2` / `blue_ban_2` | 两队第二张 Ban | OWC 从 Quarterfinals 起使用。字段名的 `_2` 前有下划线。 |
+| `red_ban_2` / `blue_ban_2` | 两队第二张 Ban | OWC 从 Quarterfinals 起且赛制大于 BO9 时使用；BO9 及以下忽略这两个字段。字段名的 `_2` 前有下划线。 |
 | `first_pick_team` | OWC 实际首选方 | 只填小写 `red` 或 `blue`，不填队名；Roll 胜者可以选择由哪队首选。MWC4k 由 Roll 决定。 |
 | `first_ban_team` | OWC 实际先 Ban 方 | 只填小写 `red` 或 `blue`，不填队名；按实际比赛填写。 |
 
@@ -246,7 +246,7 @@ first_pick_team,blue
 first_ban_team,red
 ```
 
-OWC 当前按 `round` 中的 `quarter`、`semi`、`final`、`grand` 或 `bracket reset` 识别每队两张 Ban；仅修改 `bracket` 不会改变 Ban 数量。此例红队先 Ban 时，执行顺序为红队 Ban 1 → 蓝队 Ban 1 → 蓝队 Ban 2 → 红队 Ban 2。CSV 行的排列顺序不影响此流程。
+OWC 在 BO9 及以下固定为每队一张 Ban；更长赛制按 `round` 中的 `quarter`、`semi`、`final`、`grand` 或 `bracket reset` 识别每队两张 Ban，仅修改 `bracket` 不会改变 Ban 数量。此例红队先 Ban 时，执行顺序为红队 Ban 1 → 蓝队 Ban 1 → 蓝队 Ban 2 → 红队 Ban 2。CSV 行的排列顺序不影响此流程。
 
 比赛信息 CSV 只负责填写表单，不用于导入玩家分数、判定、Rating、谱面属性或手动选图顺序。这些数据仍由 mplink 和官网谱面资料读取或计算；导入完成后可先点击“从 mplink 读取比赛数据”检查自动选图结果，未手动分析时生成前也会自动分析。
 

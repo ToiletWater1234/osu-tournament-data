@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {loserTeamAverage,relativeScoreIndex} from '../lib/rsi.mjs';
-import {tournaments,normalizeTournamentInput,resolveTournament,requireTournamentTemplate} from '../public/tournaments.js';
+import {tournaments,normalizeTournamentInput,resolveTournament,requireTournamentTemplate,owcBanCount} from '../public/tournaments.js';
 const game=(red,blue)=>({scores:[...red.map(score=>({team:'red',score})),...blue.map(score=>({team:'blue',score}))]});
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-10,`${a} != ${b}`);
 
@@ -32,4 +32,11 @@ test('five named tournament formats fix the server-side player counts',()=>{
   assert.equal(resolveTournament('osu!mania').id,'MWC4k');
   assert.equal(resolveTournament('osu!').id,'OWC');
   assert.throws(()=>requireTournamentTemplate({tournamentType:'MWC7k'}),/专用赛制模板/);
+});
+
+test('OWC BO9 uses one ban per team; longer knockout rounds use two',()=>{
+  for(const round of ['Group Stage','Round of 16','Quarterfinals','Grand Finals','自定义轮次'])assert.equal(owcBanCount({bestOf:9,round}),1);
+  assert.equal(owcBanCount({bestOf:'7',round:'Finals'}),1);
+  assert.equal(owcBanCount({bestOf:11,round:'Round of 16'}),1);
+  for(const round of ['Quarterfinals','Semifinals','Finals','Grand Finals','Bracket Reset'])assert.equal(owcBanCount({bestOf:13,round}),2);
 });

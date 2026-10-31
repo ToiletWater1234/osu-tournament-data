@@ -14,6 +14,13 @@ export function resolveTournament(value, competitionName = '') {
   return tournaments.find(profile=>profile.id===legacy[text])||null;
 }
 
+export function owcBanCount({bestOf, round} = {}) {
+  // BO9 and shorter series use one ban per team, including when the round
+  // label is entered manually. Longer series retain the stage-specific rule.
+  if (Number(bestOf) <= 9) return 1;
+  return /(quarter|semi|final|grand|bracket reset)/i.test(String(round || '')) ? 2 : 1;
+}
+
 export function normalizeTournamentInput(input) {
   const profile=resolveTournament(input.tournamentType||input.modeLabel,input.competitionName);
   if(!profile)throw new Error('请先选择 OWC、CWC、TWC、MWC4k 或 MWC7k。');
