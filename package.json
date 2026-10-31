@@ -1,6 +1,6 @@
 {
   "name": "osu-tournament-data",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Editable post-match PowerPoint generation for osu! tournaments",
   "private": true,
   "type": "module",
