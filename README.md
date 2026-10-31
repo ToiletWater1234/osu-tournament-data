@@ -16,16 +16,32 @@ PPT 模板制作和 Rating 计算由 **Old Pigeon** 完成。
 | TWC | 2v2 | 待配置 |
 | MWC7k | 2v2 | 待配置 |
 
-## 开发环境
+## 下载与启动
+
+可选择以下任意一种方式。两种方式均使用公开依赖，直接编辑模板内的 OOXML，保留可编辑的文本、形状、图片和母版。
+
+### 方式一：免安装运行包
+
+在仓库的 [Releases 页面](https://github.com/ToiletWater1234/osu-tournament-data/releases)下载 `osu-tournament-data-windows-x64.zip`，完整解压到可写文件夹，再双击 `一键启动.bat`。运行包包含 Node.js 和所需公开依赖，无需另行安装 Node.js 或执行 npm 命令。不要直接在压缩包内启动，也不要只解压 BAT 文件。
+
+首次使用需要配置自己的 osu! OAuth；字体可从 `assets` 文件夹右键安装。运行包不包含作者的 OAuth 凭据。
+
+### 方式二：从源码运行
 
 需要 Windows、Node.js 22 或更高版本，以及以下依赖：
 
-- `jszip`、`sharp`：运行 `npm install` 安装。
-- `@oai/artifact-tool` 2.8.103：当前使用的 PPT 引擎为非公开依赖，不在 npm 公共仓库，也不随本源码仓库提供。需要自行提供有权使用的该依赖；已有本地运行环境可继续使用。
+- `jszip`：读写 PPTX 压缩文件。
+- `@xmldom/xmldom`：编辑 PPTX 内的 XML，复用原模板对象和样式。
+- `sharp`：处理曲绘及图片尺寸。
 
-准备依赖后执行：
+直接双击 **`一键安装依赖.bat`**：已有完整依赖时会直接验证；缺少依赖时按锁文件安装；缺少兼容的 Node.js 或 npm 时，会从 Node.js 官网下载 Node.js 24 LTS，校验 SHA256 后放入项目内的 `runtime/`，再安装依赖。无需管理员权限，不修改系统 PATH。完成后双击 `一键启动.bat`。
+
+首次安装需要联网，请先关闭正在运行的本地服务。失败窗口会保留提示，日志位于 `.tmp/dependency-install.log`。免安装运行包通常不需要执行此步骤。
+
+若希望手动操作，可在项目目录执行：
 
 ```powershell
+npm ci
 npm run check:dependencies
 npm test
 npm start
@@ -34,6 +50,10 @@ npm start
 浏览器访问 `http://127.0.0.1:4173`。也可双击 `一键启动.bat`，或用 `start.ps1` 在终端运行。应用内部路径均相对项目目录解析。
 
 字体位于 `assets/TORUS-REGULAR.OTF` 和 `assets/TORUS-BOLD.OTF`，首次使用可右键选择安装，供 PowerPoint/WPS 显示 PPT 使用。
+
+如果旧版本提示缺少 `@oai/artifact-tool`，请更新到此版本并重新执行 `npm ci`。新版已移除此私有依赖，不需要下载、复制或安装该包。启动脚本会先检查公开依赖，避免填写比赛后才发现依赖缺失。
+
+维护者可在 Windows 上运行 `npm run build:portable` 构建免安装 ZIP；输出位于 `dist/`。构建过程按锁文件安装公开依赖，不打包本机 `.local`、测试输出或私有模块。运行包与源码应使用相同 CPU 架构的 Node.js 构建。
 
 ## OAuth 与数据目录
 

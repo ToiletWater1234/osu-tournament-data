@@ -27,6 +27,8 @@ if (-not (Test-Path -LiteralPath $serverScript)) {
   throw "Server script was not found: $serverScript"
 }
 if (-not (Test-Path -LiteralPath $moduleLink)) { throw "Application dependencies were not found: $moduleLink" }
+& $runtimeNode (Join-Path $appRoot 'scripts\check-dependencies.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Dependency check failed. Open PowerShell in this project folder and run: npm ci' }
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 if (Test-Path -LiteralPath $pidFile) {
