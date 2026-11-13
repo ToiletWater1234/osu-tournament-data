@@ -15,7 +15,13 @@
 <label>红队 Ban 1<select name="redBan" disabled required><option value="" selected>请先上传图池</option></select></label><label>蓝队 Ban 1<select name="blueBan" disabled required><option value="" selected>请先上传图池</option></select></label>
 <label class="std-only std-second-ban" hidden>红队 Ban 2<select name="redBan2" disabled><option value="" selected>请先上传图池</option></select></label><label class="std-only std-second-ban" hidden>蓝队 Ban 2<select name="blueBan2" disabled><option value="" selected>请先上传图池</option></select></label>
 <label class="std-only" hidden>首选方<select name="stdFirstPicker"><option value="">请选择</option><option value="red">红队</option><option value="blue">蓝队</option></select></label><label class="std-only" hidden>先 Ban 方<select name="stdFirstBan"><option value="">请选择</option><option value="red">红队</option><option value="blue">蓝队</option></select></label>
-<div class="wide auto-picks"><span>自动判定的选图顺序</span><output id="autoPicks">上传图池并读取 mplink 后显示；非图池谱面会自动跳过。</output></div>
+<div class="wide auto-picks"><span>对局顺序</span><output id="autoPicks">上传图池并读取 mplink 后显示；非图池谱面会自动跳过。</output></div>
 </div><div class="order" id="bpOrder"></div></section>
+<section id="matchEditor" hidden>
+  <h2>04 对局数据</h2>
+  <p>选择一局后可增删玩家、修正分数和判定。只知道 ACC 时，在该玩家的 ACC 栏选择“直接填写”。PPT 按队内分数从高到低排列。</p>
+  <div class="editor-toolbar editor-actions"></div>
+  <div class="editor-content"></div>
+</section>
 <datalist id="bracketOptions"><option value="Winners Bracket"></option><option value="Losers Bracket"></option><option value="Losers Final"></option><option value="Grand Final"></option><option value="Bracket Reset"></option></datalist>
 <section class="submit"><button type="submit" id="generate">生成可编辑 PPTX</button><p id="result"></p></section></fieldset></form><datalist id="weekdayOptions"><option value="1">Mon</option><option value="2">Tue</option><option value="3">Wed</option><option value="4">Thu</option><option value="5">Fri</option><option value="6">Sat</option><option value="7">Sun</option></datalist><datalist id="monthOptions"><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option></datalist><datalist id="timezoneOptions"><option value="-8">UTC-8</option><option value="0">UTC+0</option><option value="8">UTC+8</option><option value="9">UTC+9</option></datalist></main><script type="module" src="/public/app.js"></script></body></html>

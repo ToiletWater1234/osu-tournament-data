@@ -1,11 +1,20 @@
 import { firstPickerFromRolls, normalizeRoll } from './roll.js';
 import { tournaments, resolveTournament, owcBanCount } from './tournaments.js';
 import { startProgressPolling } from './generation-progress.js';
-let tournamentType='',modeLabel='',games=[],automaticPicks=[],poolCsv='',pendingBp={},analyzedKey='';
+import { createMatchEditor } from './match-editor.js';
+import { prepareSeries } from './match-data.js';
+
+let tournamentType='',modeLabel='',poolCsv='',pendingBp={},analyzedKey='',analyzedBestOf;
+let importing = false, generating = false;
+const matchEditor = createMatchEditor(document.querySelector('#matchEditor'), games => {
+  const series = prepareSeries(games, form.elements.bestOf.value, { manual: true });
+  document.querySelector('#autoPicks').textContent = games.map(game => game.poolMap?.code || '待选谱面').join(' → ') || '没有对局';
+  status.textContent = ` 已编辑 ${games.length} 局，当前比分 ${series.redWins}-${series.blueWins}。`;
+});
 function isStd(){return modeLabel==='osu!'}
 function usesTwoStdBans(){return isStd()&&owcBanCount({bestOf:form.elements.bestOf?.value,round:form.elements.round?.value})===2}
 function updateModeFields(){const std=isStd(),two=usesTwoStdBans(),protect=tournamentType==='MWC4k';document.querySelectorAll('.std-only').forEach(x=>x.hidden=!std);document.querySelectorAll('.mania-protect').forEach(x=>x.hidden=!protect);document.querySelectorAll('.std-second-ban').forEach(x=>x.hidden=!std||!two);for(const name of ['redProtect','blueProtect'])form.elements[name].required=protect;for(const name of ['stdFirstPicker','stdFirstBan'])form.elements[name].required=std;for(const name of ['redBan2','blueBan2'])form.elements[name].required=two;}
-const modeBox=document.querySelector('#modeButtons');for(const profile of tournaments){const b=document.createElement('button');b.type='button';b.textContent=profile.id;b.dataset.tournament=profile.id;b.onclick=()=>{tournamentType=profile.id;modeLabel=profile.modeLabel;analyzedKey='';games=[];automaticPicks=[];document.querySelector('#autoPicks').textContent='比赛类型已更改，请重新分析 mplink。';[...modeBox.children].forEach(x=>x.classList.toggle('active',x===b));document.querySelector('#poolFile').disabled=false;document.querySelector('#tournamentInfo').textContent=`${profile.id} · ${profile.playersPerTeam}v${profile.playersPerTeam}${profile.ready?'':' · 专用赛制模板待配置，暂不支持生成'}`;document.querySelector('#generate').disabled=!profile.ready;document.querySelector('#poolStatus').textContent=poolCsv?'图池已读取，可继续填写比赛信息。':'比赛类型已选择，现在请上传图池 CSV。';updateModeFields();updateBpOptions();order()};modeBox.append(b)}
+const modeBox=document.querySelector('#modeButtons');for(const profile of tournaments){const b=document.createElement('button');b.type='button';b.textContent=profile.id;b.dataset.tournament=profile.id;b.onclick=()=>{tournamentType=profile.id;modeLabel=profile.modeLabel;matchEditor.hide();document.querySelector('#autoPicks').textContent='比赛类型已更改，请重新分析 mplink。';[...modeBox.children].forEach(x=>x.classList.toggle('active',x===b));document.querySelector('#poolFile').disabled=false;document.querySelector('#tournamentInfo').textContent=`${profile.id} · ${profile.playersPerTeam}v${profile.playersPerTeam}${profile.ready?'':' · 专用赛制模板待配置，暂不支持生成'}`;document.querySelector('#generate').disabled=!profile.ready;document.querySelector('#poolStatus').textContent=poolCsv?'图池已读取，可继续填写比赛信息。':'比赛类型已选择，现在请上传图池 CSV。';updateModeFields();updateBpOptions();order()};modeBox.append(b)}
 const form=document.querySelector('#form'),status=document.querySelector('#importStatus'),result=document.querySelector('#result');
 const progressWrap=document.createElement('div');progressWrap.className='generation-progress';progressWrap.hidden=true;progressWrap.innerHTML='<div class="progress-track"><div class="progress-fill"></div></div><div class="progress-copy"><output>等待生成…</output><strong>0%</strong></div>';document.querySelector('.submit').insertBefore(progressWrap,result);
 const progressFill=progressWrap.querySelector('.progress-fill'),progressText=progressWrap.querySelector('output'),progressPercent=progressWrap.querySelector('strong');
@@ -15,11 +24,19 @@ form.addEventListener('submit',async e=>{
   e.preventDefault();e.stopImmediatePropagation();
   if(!modeLabel){result.textContent='请先选择比赛类型。';return}
   if(!poolCsv){result.textContent='请先读取图池 CSV。';return}
-  const btn=document.querySelector('#generate');btn.disabled=true;
+  const btn=document.querySelector('#generate');
+  if (importing || generating || btn.disabled) return;
+  generating = true;
+  btn.disabled=true;
   let stopPolling=null;
   try{
     showProgress(1,'正在检查 mplink 分析状态…');
-    if(analyzedKey!==analysisKey()){result.textContent='尚未分析当前 mplink，正在自动分析…';await analyzeMatch()}
+    if (matchEditor.changed && analyzedKey !== analysisKey()) {
+      throw new Error('比赛链接、图池或类型已变更。请重新读取 mplink，或恢复原来的设置以继续使用编辑内容。');
+    }
+    if (analyzedKey !== analysisKey() || (!matchEditor.changed && analyzedBestOf !== Number(form.bestOf.value))) {
+      await analyzeMatch();
+    }
     const generationId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
     showProgress(2,'分析完成，正在启动生成任务…');
     let completedResult=null,failureMessage='';
@@ -29,13 +46,18 @@ form.addEventListener('submit',async e=>{
     });
     let data;
     try{
-      const response=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...values(),generationId})});
+      const response=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...values(),generationId,...(matchEditor.changed ? {editedGames:matchEditor.snapshot()} : {})})});
       data=await response.json();if(!response.ok)throw new Error(data.error||failureMessage||'生成失败');
     }catch(error){if(completedResult)data=completedResult;else throw new Error(failureMessage||error.message);}
     stopPolling();showProgress(100,'生成完成。');
-    result.innerHTML=`完成：${data.slideCount} 页，${data.redWins}-${data.blueWins}。<a href="${data.download}">下载 PPTX</a><br>选手、比分、判定与谱面 ID：mplink；谱面资料：osu! 官网 API。${data.warning?`<br>${data.warning}`:''}`;
+    const download = document.createElement('a');
+    download.href = data.download;
+    download.textContent = '下载 PPTX';
+    result.replaceChildren(`完成 ${data.slideCount} 页，比分 ${data.redWins}-${data.blueWins}。 `, download);
+    if (data.manual) result.append(document.createElement('br'), '已采用手动编辑后的对局。');
+    if (data.warning) result.append(document.createElement('br'), data.warning);
   }catch(error){progressFill.style.background='var(--red)';showProgress(Number(progressPercent.textContent.replace('%',''))||0,`生成失败：${error.message}`);result.textContent=`生成失败：${error.message}`;}
-  finally{stopPolling?.();btn.disabled=!resolveTournament(tournamentType)?.ready;}
+  finally{stopPolling?.();generating=false;btn.disabled=!resolveTournament(tournamentType)?.ready;}
 },true);
 const oauthStatus=document.querySelector('#oauthStatus');async function oauthState(){try{const d=await(await fetch('/api/oauth')).json();oauthStatus.textContent=d.configured?` 已配置 Client ID ${d.clientId}`:' 尚未配置';}catch{}}oauthState();
 document.querySelector('#saveOauth').onclick=async()=>{oauthStatus.textContent=' 正在验证…';try{const r=await fetch('/api/oauth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:document.querySelector('#clientId').value,clientSecret:document.querySelector('#clientSecret').value})});const d=await r.json();if(!r.ok)throw new Error(d.error);document.querySelector('#clientSecret').value='';oauthStatus.textContent=` 已保存并验证 Client ID ${d.clientId}`;}catch(e){oauthStatus.textContent=` 配置失败：${e.message}`}};
@@ -47,8 +69,8 @@ function formatTime(x){const wd=weekdays[Number(x.weekday)]||'?',mo=months[Numbe
 function values(){const x=Object.fromEntries(new FormData(form));x.tournamentType=tournamentType;x.modeLabel=modeLabel;x.bestOf=Number(x.bestOf);x.redRoll=normalizeRoll(x.redRoll);x.blueRoll=normalizeRoll(x.blueRoll);x.firstPicker=isStd()?x.stdFirstPicker:firstPickerFromRolls(x.redRoll,x.blueRoll);x.matchTime=formatTime(x);x.poolCsv=poolCsv;return x}
 function timePreview(){const x=Object.fromEntries(new FormData(form)),complete=['weekday','month','day','hour','minute','timezone'].every(k=>x[k]!==''&&x[k]!==undefined);document.querySelector('#timePreview').textContent=complete?`PPT 显示：${formatTime(x)}`:'输入后将显示为：Fri, 21 Aug @08:00(UTC+8)'}
 function order(){const x=values(),profile=resolveTournament(tournamentType);if(!profile){document.querySelector('#bpOrder').textContent='';return}if(!profile.ready){document.querySelector('#bpOrder').textContent=`${profile.id} 固定为 ${profile.playersPerTeam}v${profile.playersPerTeam}，专用赛制模板待配置。`;return}if(isStd()){const pick=x.firstPicker==='red'?x.redTeam:x.blueTeam,ban=x.stdFirstBan==='red'?x.redTeam:x.blueTeam,otherBan=x.stdFirstBan==='red'?x.blueTeam:x.redTeam;document.querySelector('#bpOrder').textContent=usesTwoStdBans()?`OWC BP：${ban} Ban → ${otherBan} Ban ×2 → ${ban} Ban；${pick||'待选择'}首选，之后两队轮流选图。`:`OWC BP：${ban||'待选择'}先 Ban，双方各 Ban 1 张；${pick||'待选择'}首选，之后两队轮流选图。`;return}const big=x.firstPicker==='red'?x.redTeam:x.blueTeam,small=x.firstPicker==='red'?x.blueTeam:x.redTeam;document.querySelector('#bpOrder').textContent=`BP 顺序：${big} Protect → ${small} Protect → ${small} Ban → ${big} Ban → ${big} 首选，之后轮流选图`}
-form.addEventListener('input',e=>{if(e.target?.name==='mplink'||e.target?.name==='bestOf')analyzedKey='';if(['round','bestOf'].includes(e.target?.name)){updateModeFields();updateBpOptions()}order();timePreview()});order();timePreview();
-document.querySelector('#poolFile').onchange=async e=>{poolCsv=e.target.files[0]?await e.target.files[0].text():'';games=[];automaticPicks=[];analyzedKey='';updateBpOptions();document.querySelector('#postPool').disabled=!poolCsv;document.querySelector('#poolStatus').textContent=poolCsv?`图池已读取：${e.target.files[0].name}。现在可以继续填写比赛信息。`:'比赛类型已选择，现在请上传图池 CSV。';document.querySelector('#autoPicks').textContent=poolCsv?'图池已载入，请选择 Protect/Ban 并读取 mplink。':'请上传图池 CSV。';if(poolCsv)document.querySelector('#matchInfoFile').focus()};
+form.addEventListener('input',e=>{if (!e.target.name) return; if (e.target.name==='mplink') syncEditorVisibility();if(['round','bestOf'].includes(e.target?.name)){updateModeFields();updateBpOptions()}order();timePreview()});order();timePreview();
+document.querySelector('#poolFile').onchange=async e=>{poolCsv=e.target.files[0]?await e.target.files[0].text():'';syncEditorVisibility();updateBpOptions();document.querySelector('#postPool').disabled=!poolCsv;document.querySelector('#poolStatus').textContent=poolCsv?`图池已读取：${e.target.files[0].name}。现在可以继续填写比赛信息。`:'比赛类型已选择，现在请上传图池 CSV。';document.querySelector('#autoPicks').textContent=poolCsv?'图池已载入，请选择 Protect/Ban 并读取 mplink。':'请上传图池 CSV。';if(poolCsv)document.querySelector('#matchInfoFile').focus()};
 function setMode(value,competitionName=''){const profile=resolveTournament(value,competitionName);const hit=[...modeBox.children].find(b=>b.dataset.tournament===profile?.id);if(hit)hit.click()}
 function parseMatchInfoCsv(text){
   const rows=csvRows(text),data={},duplicates={};
@@ -69,16 +91,54 @@ function applyMatchInfo(data){
   const title=String(data.tournament_name||''),explicit=String(data.tournament_type||data.tournament||data.mode||'').trim();
   const inferred=/mania.*7\s*k|mwc\s*7\s*k/i.test(title)?'MWC7k':/mania|mwc\s*4\s*k/i.test(title)?'MWC4k':/catch|\bcwc\b/i.test(title)?'CWC':/taiko|\btwc\b/i.test(title)?'TWC':/osu!\s*world cup|\bowc\b/i.test(title)?'OWC':'';
   if(explicit||inferred)setMode(explicit||inferred,title);
-  order();timePreview();
+  syncEditorVisibility();updateModeFields();order();timePreview();
 }
 document.querySelector('#matchInfoFile').onchange=async e=>{const out=document.querySelector('#matchInfoStatus');try{if(!e.target.files[0])return;const data=parseMatchInfoCsv(await e.target.files[0].text());applyMatchInfo(data);out.textContent='比赛信息 CSV 已填写到表单；请上传图池，并从 mplink 读取正式比赛数据。';}catch(error){out.textContent=`比赛信息 CSV 读取失败：${error.message}`}};
-const analysisKey=()=>`${tournamentType}|${form.mplink.value.trim()}|${Number(form.bestOf.value)}|${poolCsv}`;
-async function analyzeMatch(){
-  if(!poolCsv)throw new Error('请先上传图池 CSV。');
-  if(!form.mplink.value.trim())throw new Error('请先输入 mplink。');
-  status.textContent=' 正在从 osu! 官网读取全部对局并逐局核对 beatmap ID…';
-  try{const r=await fetch('/api/import-match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tournamentType,modeLabel,mplink:form.mplink.value,bestOf:Number(form.bestOf.value),poolCsv})});const data=await r.json();if(!r.ok)throw new Error(data.error);games=data.games||[];automaticPicks=data.picks||[];analyzedKey=analysisKey();const ignored=data.audit?.ignoredBeatmapIds||[],empty=data.audit?.emptyGameEvents||0;document.querySelector('#autoPicks').textContent=automaticPicks.join(' → ');status.textContent=` 已读取有效记录 ${data.audit?.roomGames??'?'} 局，正式赛 ${automaticPicks.length} 图${empty?`，另排除 ${empty} 个无成绩开局事件`:''}，累计比分 ${data.score}${data.complete?'，已决出胜负':'，尚未达到赛点'}${ignored.length?`；跳过的非图池 ID：${ignored.join(', ')}`:''}。`;return data;}catch(e){analyzedKey='';games=[];automaticPicks=[];document.querySelector('#autoPicks').textContent='未能判定选图顺序。';status.textContent=` 读取失败：${e.message}`;throw e;}
+const analysisKey = () => JSON.stringify([tournamentType, form.mplink.value.trim(), poolCsv]);
+function syncEditorVisibility() {
+  if (analyzedKey === analysisKey()) matchEditor.show();
+  else matchEditor.hide();
 }
-document.querySelector('#importMatch').onclick=()=>analyzeMatch().catch(()=>{});
-form.onsubmit=async e=>{e.preventDefault();if(!modeLabel){result.textContent='请先选择比赛类型。';return}if(!poolCsv){result.textContent='请先读取图池 CSV。';return}const btn=document.querySelector('#generate');btn.disabled=true;try{if(analyzedKey!==analysisKey()){result.textContent='尚未分析当前 mplink，正在自动分析…';await analyzeMatch();}result.textContent='分析完成，正在从 mplink 重新读取正式数据并生成…';const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(values())});const data=await r.json();if(!r.ok)throw new Error(data.error);result.innerHTML=`完成：${data.slideCount} 页，${data.redWins}-${data.blueWins}。<a href="${data.download}">下载 PPTX</a><br>选手、比分、判定与谱面 ID：mplink；谱面资料：osu! 官网 API。${data.warning?`<br>${data.warning}`:''}`;}catch(e){result.textContent=`生成失败：${e.message}`}finally{btn.disabled=false}};
+
+const importButton = document.querySelector('#importMatch');
+async function analyzeMatch() {
+  if (!poolCsv) throw new Error('请先上传图池 CSV。');
+  if (!form.mplink.value.trim()) throw new Error('请先输入 mplink。');
+  const requestKey = analysisKey();
+  const requestBestOf = Number(form.bestOf.value);
+  const profile = resolveTournament(tournamentType);
+  importing = true;
+  importButton.disabled = true;
+  status.textContent = ' 正在从 osu! 官网读取对局并核对谱面 ID…';
+  try {
+    const response = await fetch('/api/import-match', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ tournamentType, mplink: form.mplink.value, bestOf: requestBestOf, poolCsv }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    if (requestKey !== analysisKey() || requestBestOf !== Number(form.bestOf.value)) {
+      throw new Error('读取期间设置已更改，请重新读取 mplink。');
+    }
+    matchEditor.load(data, profile);
+    analyzedKey = requestKey;
+    analyzedBestOf = requestBestOf;
+    document.querySelector('#autoPicks').textContent = data.games.map(game => game.poolMap.code).join(' → ') || '未找到图池内的已完成对局';
+    const ignored = data.audit.ignoredBeatmapIds;
+    status.textContent = ` 已读取 ${data.games.length} 局，比分 ${data.score}。${ignored.length ? ` 已跳过非图池谱面 ID：${ignored.join('、')}。` : ''}`;
+  } catch (error) {
+    status.textContent = ' 读取失败：' + error.message;
+    throw error;
+  } finally {
+    importing = false;
+    importButton.disabled = false;
+  }
+}
+
+importButton.onclick = () => {
+  if (generating || importing) return;
+  if (matchEditor.changed && !confirm('重新读取会覆盖当前手动修改。继续读取？')) return;
+  analyzeMatch().catch(error => { status.textContent = ' 读取失败：' + error.message; });
+};
 const shutdownButton=document.querySelector('#shutdownService'),shutdownStatus=document.querySelector('#shutdownStatus');shutdownButton.onclick=async()=>{if(!confirm('确定要关闭本地服务吗？关闭时会清理输出和缓存，之后需重新启动程序。'))return;shutdownButton.disabled=true;shutdownStatus.textContent='正在清理缓存并关闭…';try{await fetch('/api/shutdown',{method:'POST'});}catch{}shutdownStatus.textContent='本地服务已关闭，可以关闭此页面。';};

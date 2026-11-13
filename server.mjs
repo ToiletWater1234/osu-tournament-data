@@ -8,6 +8,8 @@ import { fetchMatch, fetchMatchApi, fetchBeatmap, fetchModdedBeatmap, extractGam
 import { runGenerationJob } from './lib/generation-job.mjs';
 import { OAuthStore } from './lib/oauth.mjs';
 import { normalizeTournamentInput, requireTournamentTemplate, owcBanCount } from './public/tournaments.js';
+import { prepareSeries } from './public/match-data.js';
+import { validateEditedGames } from './lib/match-edits.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 dns.setDefaultResultOrder('ipv4first');
@@ -36,16 +38,19 @@ async function loadMatch(mplink) {
   try { return await fetchMatchApi(mplink, await oauth.accessToken()); } catch (error) { apiError = error; }
   try { return await fetchMatch(mplink); } catch (pageError) { throw new Error(`无法读取比赛数据。OAuth/API：${apiError.message}；公开比赛页：${pageError.message}`); }
 }
-async function officialPoolGames(mplink, pool, onProgress = null, modeLabel = null) {
-  onProgress?.(0, '正在从 mplink 读取官方对局…');
+async function officialPoolGames(mplink, pool) {
   const payload = await loadMatch(mplink);
-  onProgress?.(0.12, '已读取对局，正在严格比对图池 ID…');
   const allGames = extractGames(payload);
   const selected = selectPoolGames(allGames, pool);
-  if (!selected.length) throw new Error('mplink 中没有找到属于所上传图池的已完成对局。非图池谱面已自动跳过。');
+  const poolIds = new Set(pool.map(map => map.beatmapId));
+  const scored = allGames.filter(game => game.scores?.length);
+  const ignoredBeatmapIds = [...new Set(scored.filter(game => game.beatmapId && !poolIds.has(game.beatmapId)).map(game => game.beatmapId))];
+  return { payload, games: selected, audit: { roomGames: scored.length, emptyGameEvents: allGames.length - scored.length, ignoredBeatmapIds } };
+}
+
+async function hydrateGames(games, modeLabel, onProgress) {
   const token = await oauth.accessToken();
-  for (let gameIndex = 0; gameIndex < selected.length; gameIndex++) {
-    const game = selected[gameIndex];
+  for (const [gameIndex, game] of games.entries()) {
     if (!game.beatmapId) game.beatmap = { id: null, deleted: true, beatmapset: {} };
     else if(beatmapCache.has(game.beatmapId))game.beatmap=beatmapCache.get(game.beatmapId);
     else try { game.beatmap = await fetchBeatmap(game.beatmapId, token);beatmapCache.set(game.beatmapId,game.beatmap); }
@@ -56,13 +61,8 @@ async function officialPoolGames(mplink, pool, onProgress = null, modeLabel = nu
       beatmapCache.set(game.beatmapId,game.beatmap);
     }
     if (modeLabel === 'osu!') game.displayBeatmap = await fetchModdedBeatmap(game, token, moddedBeatmapCache);
-    onProgress?.(0.12 + 0.88 * (gameIndex + 1) / Math.max(1, selected.length), `正在获取谱面及模组资料 ${gameIndex + 1}/${selected.length}…`);
+    onProgress((gameIndex + 1) / games.length, `正在获取谱面及模组资料 ${gameIndex + 1}/${games.length}…`);
   }
-  const poolIds = new Set(pool.map(map => Number(map.beatmapId)));
-  const ignoredBeatmapIds = [...new Set(allGames.filter(game => game.beatmapId && game.scores?.length && !poolIds.has(Number(game.beatmapId))).map(game => Number(game.beatmapId)))];
-  const scoredRoomGames = allGames.filter(game => Array.isArray(game.scores) && game.scores.length > 0).length;
-  const emptyGameEvents = allGames.length - scoredRoomGames;
-  return { payload, games: selected, picks: selected.map(game => game.poolMap.code), audit: { roomGames: scoredRoomGames, emptyGameEvents, matchedGames: selected.length, ignoredBeatmapIds } };
 }
 
 function validatePool(pool) {
@@ -73,22 +73,6 @@ function validatePool(pool) {
     if (previous && previous !== map.code) throw new Error(`图池中的 beatmap ID ${map.beatmapId} 同时对应 ${previous} 与 ${map.code}，无法严格判定。`);
     byId.set(map.beatmapId, map.code);
   }
-}
-
-function prepareSeries(games, bestOf) {
-  const needed = (Number(bestOf) + 1) / 2;
-  if (!Number.isInteger(needed) || needed < 1) return { games, redWins: 0, blueWins: 0, complete: false };
-  let redWins = 0, blueWins = 0;
-  const official = [];
-  for (const game of games) {
-    if (redWins >= needed || blueWins >= needed) continue;
-    const red = (game.scores || []).filter(score => score.team === 'red').reduce((n, score) => n + (Number(score.score) || 0), 0);
-    const blue = (game.scores || []).filter(score => score.team === 'blue').reduce((n, score) => n + (Number(score.score) || 0), 0);
-    let winner = null;
-    if (red && blue) { if (red > blue) { redWins++; winner = 'red'; } else if (blue > red) { blueWins++; winner = 'blue'; } }
-    official.push({ ...game, redTotal: red, blueTotal: blue, winner, difference: red && blue ? Math.abs(red - blue) : null, redWinsAfter: redWins, blueWinsAfter: blueWins });
-  }
-  return { games: official, redWins, blueWins, complete: redWins >= needed || blueWins >= needed };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -120,9 +104,14 @@ const server = http.createServer(async (req, res) => {
       if (!String(input.poolCsv || '').trim()) throw new Error('请先上传图池 CSV。应用不再内置图池。');
       const pool = normalizePool(input.poolCsv);
       validatePool(pool);
-      const data = await officialPoolGames(input.mplink, pool, null, input.modeLabel);
+      const data = await officialPoolGames(input.mplink, pool);
       const series = prepareSeries(data.games, input.bestOf);
-      return json(res, 200, { games: series.games, picks: series.games.map(game => game.poolMap.code), score: `${series.redWins}-${series.blueWins}`, complete: series.complete, match: data.payload.match, audit: data.audit });
+      return json(res, 200, {
+        games: series.games, pool, picks: series.games.map(game => game.poolMap.code),
+        scoringType: data.games.find(game => game.scoringType)?.scoringType,
+        score: `${series.redWins}-${series.blueWins}`, complete: series.complete,
+        match: data.payload.match, audit: data.audit,
+      });
     }
     if (req.method === 'POST' && url.pathname === '/api/generate') {
       const rawInput=JSON.parse((await body(req)).toString('utf8'));
@@ -131,8 +120,7 @@ const server = http.createServer(async (req, res) => {
       const tournament = requireTournamentTemplate(input);
       const generationId = String(input.generationId || '');
       setGenerationProgress(generationId, 1, '正在校验输入和图池…');
-      // Client-side cached games/picks are never authoritative. Every PPT build
-      // reloads the official match and beatmap records from the supplied mplink.
+      if (![7, 9, 11, 13, 15].includes(Number(input.bestOf))) throw new Error('请选择 BO7、BO9、BO11、BO13 或 BO15。');
       delete input.games;
       delete input.picks;
       const poolText = String(input.poolCsv || '');
@@ -150,17 +138,26 @@ const server = http.createServer(async (req, res) => {
       }
       if (std && !['red','blue'].includes(input.firstPicker)) throw new Error('OWC 必须选择实际首选方；Roll 胜者可以指定任意一方首选。');
       if (std && !['red','blue'].includes(input.stdFirstBan)) throw new Error('OWC 必须选择实际先 Ban 方；该选择由 Roll 败者决定。');
-      const imported = await officialPoolGames(input.mplink, pool, (fraction, message) => setGenerationProgress(generationId, 3 + fraction * 27, message), input.modeLabel);
-      const series = prepareSeries(imported.games, input.bestOf);
+      const manual = Object.hasOwn(input, 'editedGames');
+      setGenerationProgress(generationId, 3, manual ? '正在校验手动编辑的对局…' : '正在从 mplink 读取官方对局…');
+      const selected = manual
+        ? validateEditedGames(input.editedGames, pool, input)
+        : (await officialPoolGames(input.mplink, pool)).games;
+      if (!selected.length) throw new Error('mplink 中未找到图池内的已完成对局。请读取比赛后手动添加对局。');
+      const series = prepareSeries(selected, input.bestOf, { manual });
       const games = series.games;
+      delete input.editedGames;
+      input.seriesComplete = series.complete;
+      await hydrateGames(games, input.modeLabel, (fraction, message) => setGenerationProgress(generationId, 8 + fraction * 22, message));
       input.picks = games.map(game => game.poolMap.code);
       const name = `${safeName(input.competitionName)}_${safeName(input.round)}_${Date.now()}.pptx`;
       const outputPath = path.join(outputs, name);
       const templateName = tournament.template;
-      setGenerationProgress(generationId,30,'官方数据已读取，正在启动 PPT 页面生成…');
+      setGenerationProgress(generationId,30,'对局与谱面资料已就绪，正在生成 PPT…');
       const result = await runGenerationJob({ templatePath: path.join(assets, templateName), outputPath, input, pool, games },(fraction,message)=>setGenerationProgress(generationId,30+fraction*69,message));
-      const warning = !games.length ? 'mplink 数据未读取到，缺失比分已填 ?' : (!series.complete ? `比赛数据未形成完整胜负，目前累计 ${series.redWins}-${series.blueWins}。请核对 mplink、图池 ID 和缺失分数。` : null);
-      const responseData={ ...result, download: `/outputs/${encodeURIComponent(name)}`, warning, dataSources: { match: 'mplink', players: 'mplink', scores: 'mplink', judgements: 'mplink', beatmapIds: 'mplink', beatmapMetadata: 'osu! beatmap API', poolCodes: 'uploaded pool CSV', formFields: 'manual or match-info CSV' } };
+      const warning = series.complete ? null : `比赛尚未决出胜负，目前比分 ${series.redWins}-${series.blueWins}。`;
+      const scoreSource = manual ? 'mplink + 手动编辑' : 'mplink';
+      const responseData={ ...result, manual, download: `/outputs/${encodeURIComponent(name)}`, warning, dataSources: { match: 'mplink', players: scoreSource, scores: scoreSource, judgements: scoreSource, beatmapIds: scoreSource, beatmapMetadata: 'osu! beatmap API', poolCodes: 'uploaded pool CSV', formFields: 'manual or match-info CSV' } };
       setGenerationProgress(generationId, 100, '生成完成。', 'complete', responseData);
       setTimeout(() => generationProgress.delete(generationId), 5 * 60 * 1000);
       return json(res, 200, responseData);

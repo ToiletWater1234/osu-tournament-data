@@ -10,6 +10,8 @@ import JSZip from 'jszip';
 import sharp from 'sharp';
 import { openTemplate, saveTemplate } from '../lib/pptx-template.mjs';
 import { generateDeck } from '../lib/generator.mjs';
+import { validateEditedGames } from '../lib/match-edits.mjs';
+import { prepareSeries } from '../public/match-data.js';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const parse=xml=>new DOMParser().parseFromString(xml,'application/xml');
@@ -175,7 +177,10 @@ for(const mode of ['MWC4k','OWC'])test(mode+' generates a complete 6–7 match w
     const scoreFilled=nodes(score,'p:sp').filter(s=>/^!!SCORE_/.test(nodes(s,'p:cNvPr')[0]?.getAttribute('name'))&&nodes(s,'a:srgbClr').some(n=>n.getAttribute('val')==='FFE9A6')).length;
     assert.equal(scoreFilled,i+1);
     const rail=findShape(score,'!!PROGRESS_CODE_'+String(i+1).padStart(2,'0'));assert.equal(shapeText(rail),fixtureData.games[i].poolMap.code);
-    if(i===12)assert.ok(nodes(code,'a:srgbClr').some(n=>n.getAttribute('val')==='8C238C'));
+    if(i===12){
+      assert.ok(nodes(code,'a:srgbClr').some(n=>n.getAttribute('val')==='8C238C'));
+      assert.equal(shapeText(findShape(pick,'!!PICK_LABEL_TB')), 'Tiebreaker');
+    }
   }
   for(const file of Object.keys(zip.files).filter(n=>n.endsWith('.rels'))){
     const doc=parse(await zip.file(file).async('string'));
@@ -189,6 +194,35 @@ for(const mode of ['MWC4k','OWC'])test(mode+' generates a complete 6–7 match w
   const final=parse(await zip.file('ppt/slides/slide'+(result.slideCount-1)+'.xml').async('string'));
   assert.ok(nodes(final,'p:sp').map(shapeText).join('\n').includes('6 - 7'));
   assert.ok(nodes(final,'p:sp').map(shapeText).join('\n').includes('Test Blue Country'));
+});
+
+test('manual game data drives scores, rank order, missing judgments and incomplete results', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'osu-edited-game-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const { input, pool } = fixture('OWC');
+  const scores = [
+    { team:'red', name:'Lower Score', score:'400', accuracy:1 },
+    { team:'red', name:'Highest Score', score:'900', accuracyMode:'direct', manualAccuracy:'98.755%' },
+    { team:'blue', name:'Zero Score', score:'0', accuracy:0 },
+  ];
+  const selected = validateEditedGames([{ beatmapId: pool[1].beatmapId, scores }], pool, {modeLabel:'osu!',playersPerTeam:4});
+  const series = prepareSeries(selected, 9, {manual:true});
+  assert.equal(series.redWins, 1);
+  assert.equal(series.games[0].redTotal, 1300);
+  assert.equal(series.complete, false);
+  const output = path.join(dir, 'edited.pptx');
+  const result = await generateDeck({templatePath:path.join(root,'assets/template-std.pptx'),outputPath:output,input:{...input,bestOf:9,seriesComplete:false},pool,games:series.games});
+  assert.equal(result.winner, null);
+  assert.equal(result.redWins, 1);
+  const zip = await JSZip.loadAsync(await fs.readFile(output));
+  const detail = parse(await zip.file('ppt/slides/slide5.xml').async('string'));
+  const texts = nodes(detail, 'p:sp').map(shapeText);
+  assert.ok(texts.includes('Highest Score'));
+  assert.ok(texts.some(text => text.includes('98.76%')));
+  assert.equal(shapeText(findShape(detail,'!!STD_JUDGEMENTS_5_0')), '?\n?\n?\n?');
+  const deck = await openTemplate(output);
+  const {records} = await inspect(deck, 4);
+  assert.ok(records.find(r => r.text === 'Highest Score').position.top < records.find(r => r.text === 'Lower Score').position.top);
 });
 
 test('OWC BO9 renders exactly one ban per team and keeps the complete rail fixed and centered',async t=>{
