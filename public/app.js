@@ -4,13 +4,20 @@ import { startProgressPolling } from './generation-progress.js';
 import { createMatchEditor } from './match-editor.js';
 import { prepareSeries } from './match-data.js';
 
-let tournamentType='',modeLabel='',poolCsv='',pendingBp={},analyzedKey='',analyzedBestOf;
+let tournamentType='',modeLabel='',poolCsv='',pendingBp={},analyzedKey='';
 let importing = false, generating = false;
-const matchEditor = createMatchEditor(document.querySelector('#matchEditor'), games => {
-  const series = prepareSeries(games, form.elements.bestOf.value, { manual: true });
-  document.querySelector('#autoPicks').textContent = games.map(game => game.poolMap?.code || '待选谱面').join(' → ') || '没有对局';
-  status.textContent = ` 已编辑 ${games.length} 局，当前比分 ${series.redWins}-${series.blueWins}。`;
-});
+const matchEditor = createMatchEditor(document.querySelector('#matchEditor'), updateSeriesPreview);
+
+function updateSeriesPreview(games = matchEditor.snapshot()) {
+  const bestOf = form.elements.bestOf.value;
+  const series = prepareSeries(games, bestOf);
+  const excluded = games.length - series.games.length;
+  document.querySelector('#autoPicks').textContent = series.games.map(game => game.poolMap?.code || '待选谱面').join(' → ') || '没有对局';
+  const preview = document.querySelector('#seriesPreview');
+  preview.textContent = bestOf
+    ? `已保留 ${games.length} 局，预计生成前 ${series.games.length} 局，比分 ${series.redWins}-${series.blueWins}。${excluded ? ` 其余 ${excluded} 局仍可编辑。` : ''}`
+    : `已保留 ${games.length} 局。请选择赛制以预览比分。`;
+}
 function isStd(){return modeLabel==='osu!'}
 function usesTwoStdBans(){return isStd()&&owcBanCount({bestOf:form.elements.bestOf?.value,round:form.elements.round?.value})===2}
 function updateModeFields(){const std=isStd(),two=usesTwoStdBans(),protect=tournamentType==='MWC4k';document.querySelectorAll('.std-only').forEach(x=>x.hidden=!std);document.querySelectorAll('.mania-protect').forEach(x=>x.hidden=!protect);document.querySelectorAll('.std-second-ban').forEach(x=>x.hidden=!std||!two);for(const name of ['redProtect','blueProtect'])form.elements[name].required=protect;for(const name of ['stdFirstPicker','stdFirstBan'])form.elements[name].required=std;for(const name of ['redBan2','blueBan2'])form.elements[name].required=two;}
@@ -34,9 +41,7 @@ form.addEventListener('submit',async e=>{
     if (matchEditor.changed && analyzedKey !== analysisKey()) {
       throw new Error('比赛链接、图池或类型已变更。请重新读取 mplink，或恢复原来的设置以继续使用编辑内容。');
     }
-    if (analyzedKey !== analysisKey() || (!matchEditor.changed && analyzedBestOf !== Number(form.bestOf.value))) {
-      await analyzeMatch();
-    }
+    if (analyzedKey !== analysisKey()) await analyzeMatch();
     const generationId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
     showProgress(2,'分析完成，正在启动生成任务…');
     let completedResult=null,failureMessage='';
@@ -69,7 +74,7 @@ function formatTime(x){const wd=weekdays[Number(x.weekday)]||'?',mo=months[Numbe
 function values(){const x=Object.fromEntries(new FormData(form));x.tournamentType=tournamentType;x.modeLabel=modeLabel;x.bestOf=Number(x.bestOf);x.redRoll=normalizeRoll(x.redRoll);x.blueRoll=normalizeRoll(x.blueRoll);x.firstPicker=isStd()?x.stdFirstPicker:firstPickerFromRolls(x.redRoll,x.blueRoll);x.matchTime=formatTime(x);x.poolCsv=poolCsv;return x}
 function timePreview(){const x=Object.fromEntries(new FormData(form)),complete=['weekday','month','day','hour','minute','timezone'].every(k=>x[k]!==''&&x[k]!==undefined);document.querySelector('#timePreview').textContent=complete?`PPT 显示：${formatTime(x)}`:'输入后将显示为：Fri, 21 Aug @08:00(UTC+8)'}
 function order(){const x=values(),profile=resolveTournament(tournamentType);if(!profile){document.querySelector('#bpOrder').textContent='';return}if(!profile.ready){document.querySelector('#bpOrder').textContent=`${profile.id} 固定为 ${profile.playersPerTeam}v${profile.playersPerTeam}，专用赛制模板待配置。`;return}if(isStd()){const pick=x.firstPicker==='red'?x.redTeam:x.blueTeam,ban=x.stdFirstBan==='red'?x.redTeam:x.blueTeam,otherBan=x.stdFirstBan==='red'?x.blueTeam:x.redTeam;document.querySelector('#bpOrder').textContent=usesTwoStdBans()?`OWC BP：${ban} Ban → ${otherBan} Ban ×2 → ${ban} Ban；${pick||'待选择'}首选，之后两队轮流选图。`:`OWC BP：${ban||'待选择'}先 Ban，双方各 Ban 1 张；${pick||'待选择'}首选，之后两队轮流选图。`;return}const big=x.firstPicker==='red'?x.redTeam:x.blueTeam,small=x.firstPicker==='red'?x.blueTeam:x.redTeam;document.querySelector('#bpOrder').textContent=`BP 顺序：${big} Protect → ${small} Protect → ${small} Ban → ${big} Ban → ${big} 首选，之后轮流选图`}
-form.addEventListener('input',e=>{if (!e.target.name) return; if (e.target.name==='mplink') syncEditorVisibility();if(['round','bestOf'].includes(e.target?.name)){updateModeFields();updateBpOptions()}order();timePreview()});order();timePreview();
+form.addEventListener('input',e=>{if (!e.target.name) return; if (e.target.name==='mplink') syncEditorVisibility();if(['round','bestOf'].includes(e.target.name)){updateModeFields();updateBpOptions()}if(e.target.name==='bestOf' && analyzedKey===analysisKey())updateSeriesPreview();order();timePreview()});order();timePreview();
 document.querySelector('#poolFile').onchange=async e=>{poolCsv=e.target.files[0]?await e.target.files[0].text():'';syncEditorVisibility();updateBpOptions();document.querySelector('#postPool').disabled=!poolCsv;document.querySelector('#poolStatus').textContent=poolCsv?`图池已读取：${e.target.files[0].name}。现在可以继续填写比赛信息。`:'比赛类型已选择，现在请上传图池 CSV。';document.querySelector('#autoPicks').textContent=poolCsv?'图池已载入，请选择 Protect/Ban 并读取 mplink。':'请上传图池 CSV。';if(poolCsv)document.querySelector('#matchInfoFile').focus()};
 function setMode(value,competitionName=''){const profile=resolveTournament(value,competitionName);const hit=[...modeBox.children].find(b=>b.dataset.tournament===profile?.id);if(hit)hit.click()}
 function parseMatchInfoCsv(text){
@@ -96,7 +101,10 @@ function applyMatchInfo(data){
 document.querySelector('#matchInfoFile').onchange=async e=>{const out=document.querySelector('#matchInfoStatus');try{if(!e.target.files[0])return;const data=parseMatchInfoCsv(await e.target.files[0].text());applyMatchInfo(data);out.textContent='比赛信息 CSV 已填写到表单；请上传图池，并从 mplink 读取正式比赛数据。';}catch(error){out.textContent=`比赛信息 CSV 读取失败：${error.message}`}};
 const analysisKey = () => JSON.stringify([tournamentType, form.mplink.value.trim(), poolCsv]);
 function syncEditorVisibility() {
-  if (analyzedKey === analysisKey()) matchEditor.show();
+  if (analyzedKey === analysisKey()) {
+    matchEditor.show();
+    updateSeriesPreview();
+  }
   else matchEditor.hide();
 }
 
@@ -118,15 +126,14 @@ async function analyzeMatch() {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
-    if (requestKey !== analysisKey() || requestBestOf !== Number(form.bestOf.value)) {
+    if (requestKey !== analysisKey()) {
       throw new Error('读取期间设置已更改，请重新读取 mplink。');
     }
     matchEditor.load(data, profile);
     analyzedKey = requestKey;
-    analyzedBestOf = requestBestOf;
-    document.querySelector('#autoPicks').textContent = data.games.map(game => game.poolMap.code).join(' → ') || '未找到图池内的已完成对局';
+    updateSeriesPreview();
     const ignored = data.audit.ignoredBeatmapIds;
-    status.textContent = ` 已读取 ${data.games.length} 局，比分 ${data.score}。${ignored.length ? ` 已跳过非图池谱面 ID：${ignored.join('、')}。` : ''}`;
+    status.textContent = ` 已读取 ${data.games.length} 局。${ignored.length ? ` 已跳过非图池谱面 ID：${ignored.join('、')}。` : ''}`;
   } catch (error) {
     status.textContent = ' 读取失败：' + error.message;
     throw error;

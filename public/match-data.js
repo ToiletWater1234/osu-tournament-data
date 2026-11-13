@@ -64,17 +64,17 @@ export function gameResult(scores) {
   return { redTotal, blueTotal, winner, difference };
 }
 
-export function prepareSeries(games, bestOf, { manual = false } = {}) {
+export function prepareSeries(games, bestOf) {
   const needed = (Number(bestOf) + 1) / 2;
   const hasTarget = Number.isInteger(needed) && needed > 0;
   let redWins = 0, blueWins = 0;
   const selected = [];
   for (const game of games) {
-    if (!manual && hasTarget && (redWins >= needed || blueWins >= needed || selected.length >= Number(bestOf))) break;
     const result = gameResult(game.scores);
     if (result.winner === 'red') redWins++;
     if (result.winner === 'blue') blueWins++;
     selected.push({ ...game, ...result, redWinsAfter: redWins, blueWinsAfter: blueWins });
+    if (hasTarget && (redWins >= needed || blueWins >= needed)) break;
   }
   const complete = hasTarget && redWins !== blueWins && Math.max(redWins, blueWins) >= needed;
   return { games: selected, redWins, blueWins, complete };

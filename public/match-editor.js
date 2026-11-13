@@ -137,7 +137,7 @@ export function createMatchEditor(section, onChange) {
     toolbar.append(button('新增对局', () => update(() => {
       games.push({ beatmapId: '', scores: [], mods: [], scoringType, added: true });
       selected = games.length - 1;
-    }), games.length >= 15));
+    })));
     if (!games.length) {
       content.append(element('p', '当前没有对局。点击“新增对局”并选择谱面。'));
       return;

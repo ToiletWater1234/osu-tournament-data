@@ -107,7 +107,7 @@ const server = http.createServer(async (req, res) => {
       const data = await officialPoolGames(input.mplink, pool);
       const series = prepareSeries(data.games, input.bestOf);
       return json(res, 200, {
-        games: series.games, pool, picks: series.games.map(game => game.poolMap.code),
+        games: data.games, pool, picks: series.games.map(game => game.poolMap.code),
         scoringType: data.games.find(game => game.scoringType)?.scoringType,
         score: `${series.redWins}-${series.blueWins}`, complete: series.complete,
         match: data.payload.match, audit: data.audit,
@@ -143,9 +143,9 @@ const server = http.createServer(async (req, res) => {
       const selected = manual
         ? validateEditedGames(input.editedGames, pool, input)
         : (await officialPoolGames(input.mplink, pool)).games;
-      if (!selected.length) throw new Error('mplink 中未找到图池内的已完成对局。请读取比赛后手动添加对局。');
-      const series = prepareSeries(selected, input.bestOf, { manual });
+      const series = prepareSeries(selected, input.bestOf);
       const games = series.games;
+      if (!games.length) throw new Error('mplink 中未找到图池内的已完成对局。请读取比赛后手动添加对局。');
       delete input.editedGames;
       input.seriesComplete = series.complete;
       await hydrateGames(games, input.modeLabel, (fraction, message) => setGenerationProgress(generationId, 8 + fraction * 22, message));

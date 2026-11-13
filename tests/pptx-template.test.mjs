@@ -206,7 +206,7 @@ test('manual game data drives scores, rank order, missing judgments and incomple
     { team:'blue', name:'Zero Score', score:'0', accuracy:0 },
   ];
   const selected = validateEditedGames([{ beatmapId: pool[1].beatmapId, scores }], pool, {modeLabel:'osu!',playersPerTeam:4});
-  const series = prepareSeries(selected, 9, {manual:true});
+  const series = prepareSeries(selected, 9);
   assert.equal(series.redWins, 1);
   assert.equal(series.games[0].redTotal, 1300);
   assert.equal(series.complete, false);

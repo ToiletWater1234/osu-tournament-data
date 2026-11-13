@@ -15,11 +15,13 @@
 <label>红队 Ban 1<select name="redBan" disabled required><option value="" selected>请先上传图池</option></select></label><label>蓝队 Ban 1<select name="blueBan" disabled required><option value="" selected>请先上传图池</option></select></label>
 <label class="std-only std-second-ban" hidden>红队 Ban 2<select name="redBan2" disabled><option value="" selected>请先上传图池</option></select></label><label class="std-only std-second-ban" hidden>蓝队 Ban 2<select name="blueBan2" disabled><option value="" selected>请先上传图池</option></select></label>
 <label class="std-only" hidden>首选方<select name="stdFirstPicker"><option value="">请选择</option><option value="red">红队</option><option value="blue">蓝队</option></select></label><label class="std-only" hidden>先 Ban 方<select name="stdFirstBan"><option value="">请选择</option><option value="red">红队</option><option value="blue">蓝队</option></select></label>
-<div class="wide auto-picks"><span>对局顺序</span><output id="autoPicks">上传图池并读取 mplink 后显示；非图池谱面会自动跳过。</output></div>
+<div class="wide auto-picks"><span>PPT 对局顺序</span><output id="autoPicks">上传图池并读取 mplink 后显示。</output></div>
 </div><div class="order" id="bpOrder"></div></section>
 <section id="matchEditor" hidden>
   <h2>04 对局数据</h2>
-  <p>选择一局后可增删玩家、修正分数和判定。只知道 ACC 时，在该玩家的 ACC 栏选择“直接填写”。PPT 按队内分数从高到低排列。</p>
+  <p>原比分到达赛点后的对局也可编辑。PPT 按修正后的比分计算，生成到首支队伍达到所需胜场的那一局。</p>
+  <p>只知道 ACC 时，在该玩家的 ACC 栏选择“直接填写”。PPT 按队内分数从高到低排列。</p>
+  <p id="seriesPreview" aria-live="polite"></p>
   <div class="editor-toolbar editor-actions"></div>
   <div class="editor-content"></div>
 </section>
