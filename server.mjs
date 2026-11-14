@@ -163,10 +163,12 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, responseData);
     }
     const outputRequest = url.pathname.startsWith('/outputs/');
-    const rel = url.pathname === '/' ? 'public/index.html' : url.pathname.replace(/^\//, '');
-    const base = outputRequest ? dataRoot : root;
+    const rel = outputRequest
+      ? decodeURIComponent(url.pathname.slice('/outputs/'.length))
+      : (url.pathname === '/' ? 'public/index.html' : url.pathname.slice(1));
+    const base = outputRequest ? outputs : root;
     const full = path.resolve(base, rel);
-    if (!full.startsWith(base)) { res.writeHead(403); return res.end(); }
+    if (!full.startsWith(base + path.sep)) { res.writeHead(403); return res.end(); }
     const data = await fs.readFile(full);
     res.writeHead(200, {'Content-Type': types[path.extname(full)] || 'application/octet-stream'}); res.end(data);
   } catch (error) {

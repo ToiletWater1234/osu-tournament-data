@@ -135,7 +135,7 @@ TB,7654409,Example Artist - Tiebreaker [Extra]
 | --- | --- | --- |
 | `tournament_type` | 比赛类型 | `OWC`、`MWC4k`、`CWC`、`TWC`、`MWC7k`；推荐显式填写。目前只有 OWC、MWC4k 可生成。 |
 | `tournament_name` | PPT 比赛名称 | `osu! World Cup 2025`；这是显示名称，与比赛类型字段不同。 |
-| `round` | 比赛轮次 | `Round of 16`、`Quarterfinals`、`Semifinals`、`Finals`、`Grand Finals`。OWC 在 BO9 及以下每队一张 Ban；更长赛制结合此字段识别 Ban 数量，请使用英文轮次。 |
+| `round` | 比赛轮次 | 例如 `Round of 16`、`Quarterfinals`、`Semifinals`、`Finals`、`Grand Finals`，也可填写自定义名称。 |
 | `bracket` | 分组/赛段文字 | 如 `Winners Bracket`、`Losers Bracket`、`Losers Final`、`Grand Final`、`Bracket Reset`，也可填写其他文字。 |
 | `best_of` | Best of X | 只填数字 `7`、`9`、`11`、`13`、`15`，不要写成 `BO13`。 |
 | `match_time` | 星期、日期、时间、时区 | 如 `Sun 14 Dec @20:10(UTC+0)`；具体格式见下文。 |
@@ -145,7 +145,7 @@ TB,7654409,Example Artist - Tiebreaker [Extra]
 | `red_roll` / `blue_roll` | 两队 Roll | 填非负整数，或填写 `win` / `lose`；关键字不区分大小写。 |
 | `red_protect` / `blue_protect` | 两队 Protect | 仅 MWC4k 使用，例如 `RC7`、`LN1`。OWC 不使用 Protect。 |
 | `red_ban` / `blue_ban` | 两队第一张 Ban | 必须填图池中的编号，如 `RC8` 或 `HD1`。 |
-| `red_ban_2` / `blue_ban_2` | 两队第二张 Ban | OWC 从 Quarterfinals 起且赛制大于 BO9 时使用；BO9 及以下忽略这两个字段。字段名的 `_2` 前有下划线。 |
+| `red_ban_2` / `blue_ban_2` | 两队第二张 Ban | OWC 的 `best_of` 为 `11`、`13` 或 `15` 时必填。字段名的 `_2` 前有下划线。 |
 | `first_pick_team` | OWC 实际首选方 | 只填小写 `red` 或 `blue`，不填队名；Roll 胜者可以选择由哪队首选。MWC4k 由 Roll 决定。 |
 | `first_ban_team` | OWC 实际先 Ban 方 | 只填小写 `red` 或 `blue`，不填队名；按实际比赛填写。 |
 
@@ -202,7 +202,7 @@ blue_roll,lose
 
 PPT 会显示 `win` / `lose`，并按 `win` 大于 `lose` 判定首选方。
 
-#### 示例 2：OWC Round of 16，每队一张 Ban
+#### 示例 2：OWC 2025 Round of 16，BO9 每队一张 Ban
 
 `owc_ro16_match.csv`，以下为填写格式演示，队伍、时间、BP 和 mplink 请替换为真实比赛信息：
 
@@ -254,7 +254,7 @@ first_pick_team,blue
 first_ban_team,red
 ```
 
-OWC 在 BO9 及以下固定为每队一张 Ban；更长赛制按 `round` 中的 `quarter`、`semi`、`final`、`grand` 或 `bracket reset` 识别每队两张 Ban，仅修改 `bracket` 不会改变 Ban 数量。此例红队先 Ban 时，执行顺序为红队 Ban 1 → 蓝队 Ban 1 → 蓝队 Ban 2 → 红队 Ban 2。CSV 行的排列顺序不影响此流程。
+OWC 的 Ban 数量由 `best_of` 决定。BO9 及以下每队一张，BO11 及以上每队两张。此例红队先 Ban 时，执行顺序为红队 Ban 1 → 蓝队 Ban 1 → 蓝队 Ban 2 → 红队 Ban 2。
 
 比赛信息 CSV 用于填写比赛表单。玩家分数和判定通过 mplink 读取，也可在“对局数据”中手动修正。RSI 由程序计算，谱面属性来自官网。
 
@@ -265,7 +265,7 @@ OWC 在 BO9 及以下固定为每队一张 Ban；更长赛制按 `round` 中的 
 - 生成时按对局顺序累计胜场，以首支队伍达到所选赛制胜场数的那一局为终点。例如 BO9 先赢 5 局即结束，后续记录仍留在编辑区。平局或单方缺少成绩的对局不计胜场。双方均未达到所需胜场时，PPT 显示当前比分。
 - OWC 的星数使用对应模组的官方属性；时长、BPM、CS、AR、OD 按模组换算。
 - RSI 为 `(个人得分 / 本局败方队伍均分)^1.5`。双方共用分母，保留三位小数；低于 0.750 标红，高于 1.500 标绿。缺少上场选手数据、平局或分母为零时显示 `?`。
-- OWC 不使用 Protect；每队 Ban 数量按比赛阶段区分，首选方、先 Ban 方按实际比赛填写。MWC4k 使用对应的 Protect/Ban 与 Roll 规则。
+- OWC 每队 Ban 数量按 BO 赛制区分，首选方、先 Ban 方按实际比赛填写。MWC4k 使用对应的 Protect/Ban 与 Roll 规则。
 - Roll 可填写数字或 `win`/`lose`。
 - 仅对局介绍页展示曲绘和图池编号，二者是独立对象。TB 标题只显示 `Tiebreaker`。异常或过大的曲绘跳过。
 - OWC 每图 7 页，MWC4k 每图 6 页。PPT 生成在独立进程执行，进度查询保持响应。

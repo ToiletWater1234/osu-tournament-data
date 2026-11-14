@@ -14,11 +14,8 @@ export function resolveTournament(value, competitionName = '') {
   return tournaments.find(profile=>profile.id===legacy[text])||null;
 }
 
-export function owcBanCount({bestOf, round} = {}) {
-  // BO9 and shorter series use one ban per team, including when the round
-  // label is entered manually. Longer series retain the stage-specific rule.
-  if (Number(bestOf) <= 9) return 1;
-  return /(quarter|semi|final|grand|bracket reset)/i.test(String(round || '')) ? 2 : 1;
+export function owcBanCount({ bestOf } = {}) {
+  return Number(bestOf) >= 11 ? 2 : 1;
 }
 
 export function normalizeTournamentInput(input) {

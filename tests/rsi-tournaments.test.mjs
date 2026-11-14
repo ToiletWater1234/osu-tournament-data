@@ -34,9 +34,9 @@ test('five named tournament formats fix the server-side player counts',()=>{
   assert.throws(()=>requireTournamentTemplate({tournamentType:'MWC7k'}),/专用赛制模板/);
 });
 
-test('OWC BO9 uses one ban per team; longer knockout rounds use two',()=>{
-  for(const round of ['Group Stage','Round of 16','Quarterfinals','Grand Finals','自定义轮次'])assert.equal(owcBanCount({bestOf:9,round}),1);
-  assert.equal(owcBanCount({bestOf:'7',round:'Finals'}),1);
-  assert.equal(owcBanCount({bestOf:11,round:'Round of 16'}),1);
-  for(const round of ['Quarterfinals','Semifinals','Finals','Grand Finals','Bracket Reset'])assert.equal(owcBanCount({bestOf:13,round}),2);
+test('OWC ban count depends on best-of even with a custom or empty round label', () => {
+  for (const round of ['Group Stage', 'Round of 16', 'Grand Finals', '自定义轮次', '']) {
+    for (const bestOf of [7, 9]) assert.equal(owcBanCount({ bestOf, round }), 1);
+    for (const bestOf of [11, 13, 15]) assert.equal(owcBanCount({ bestOf: String(bestOf), round }), 2);
+  }
 });
